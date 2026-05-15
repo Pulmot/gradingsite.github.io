@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barcode Check Station</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Arial,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#overlay{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:background .25s;background:#1a1a2e}
+#overlay.green{background:#00c853}
+#overlay.red{background:#d50000}
+#scanner-box{position:relative;z-index:10;display:flex;flex-direction:column;align-items:center;gap:16px;width:100%;padding:24px;max-height:100vh;overflow-y:auto}
+#station-label{font-size:14px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.5)}
+#supplier-bar{font-size:15px;font-weight:700;color:white;background:rgba(0,0,0,.3);padding:8px 18px;border-radius:10px;display:flex;align-items:center;gap:12px}
+#supplier-bar span{opacity:.7;font-weight:400}
+#change-sup-btn{padding:5px 12px;border:1px solid rgba(255,255,255,.4);border-radius:8px;background:transparent;color:white;font-size:12px;cursor:pointer}
+#change-sup-btn:hover{background:rgba(255,255,255,.15)}
+#barcode-input{width:min(520px,90vw);height:60px;font-size:26px;font-weight:700;text-align:center;letter-spacing:4px;border:4px solid rgba(255,255,255,.3);border-radius:16px;background:rgba(255,255,255,.12);color:white;outline:none;caret-color:white}
+#barcode-input::placeholder{color:rgba(255,255,255,.35);font-size:16px;font-weight:400;letter-spacing:1px}
+#barcode-input:focus{border-color:rgba(255,255,255,.7);background:rgba(255,255,255,.18)}
+#feedback{text-align:center;width:min(800px,94vw);display:flex;flex-direction:column;align-items:center;gap:12px}
+#feedback-title{font-size:clamp(28px,5vw,60px);font-weight:900;color:white;line-height:1.1;text-shadow:0 4px 20px rgba(0,0,0,.3);display:none}
+#feedback-subtitle{font-size:clamp(15px,2.4vw,24px);font-weight:600;color:rgba(255,255,255,.93);line-height:1.55;display:none;white-space:pre-line}
+#green-msg{font-size:clamp(20px,3.5vw,40px);font-weight:800;color:white;display:none;text-align:center}
+#scan-hint{font-size:13px;color:rgba(255,255,255,.38);letter-spacing:1px}
+#barcode-display{font-size:12px;letter-spacing:3px;color:rgba(255,255,255,.4);display:none}
+
+/* Grade panel */
+#grade-panel{display:none;flex-direction:column;align-items:center;gap:10px;width:min(560px,92vw)}
+#grade-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.g-btn{padding:14px 10px;border:3px solid rgba(255,255,255,.45);border-radius:14px;background:rgba(255,255,255,.13);color:white;font-size:18px;font-weight:800;cursor:pointer;min-width:110px;display:flex;flex-direction:column;align-items:center;gap:3px;transition:background .15s}
+.g-btn .sc{font-size:11px;opacity:.65;font-weight:600}
+.g-btn:hover{background:rgba(255,255,255,.28);border-color:white}
+
+/* Escape/back button */
+#escape-btn{padding:10px 20px;border:2px solid rgba(255,255,255,.35);border-radius:12px;background:rgba(0,0,0,.25);color:rgba(255,255,255,.75);font-size:14px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:all .15s;margin-top:4px}
+#escape-btn:hover{background:rgba(0,0,0,.45);border-color:rgba(255,255,255,.6);color:white}
+
+/* Sub panel */
+#sub-panel{display:none;flex-direction:column;align-items:center;gap:10px;width:min(500px,92vw)}
+#sub-question{font-size:16px;font-weight:700;color:white;text-align:center}
+#sub-row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.s-btn{padding:13px 16px;border:3px solid rgba(255,255,255,.45);border-radius:14px;background:rgba(255,255,255,.13);color:white;font-size:16px;font-weight:800;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:background .15s;min-width:120px}
+.s-btn .sc{font-size:11px;opacity:.65}
+.s-btn:hover{background:rgba(255,255,255,.28);border-color:white}
+#custom-input-wrap{display:none;flex-direction:column;align-items:center;gap:8px;width:100%}
+#custom-input{width:100%;padding:12px 16px;font-size:16px;border-radius:12px;border:none;outline:none;font-weight:600}
+#custom-confirm{padding:10px 24px;background:#00c853;color:white;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer}
+
+/* Escape in sub panel */
+#escape-btn-sub{padding:8px 18px;border:2px solid rgba(255,255,255,.35);border-radius:12px;background:rgba(0,0,0,.25);color:rgba(255,255,255,.75);font-size:13px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:all .15s;margin-top:2px}
+#escape-btn-sub:hover{background:rgba(0,0,0,.45);border-color:rgba(255,255,255,.6);color:white}
+
+/* Sync indicator */
+#sync-indicator{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.5);color:white;font-size:12px;font-weight:700;padding:6px 14px;border-radius:20px;z-index:9999;display:none;letter-spacing:1px}
+#sync-indicator.syncing{display:block;background:rgba(255,165,0,.7)}
+#sync-indicator.ok{display:block;background:rgba(0,200,83,.7)}
+#sync-indicator.err{display:block;background:rgba(213,0,0,.7)}
+
+/* Counter */
+#scan-counter{position:fixed;top:16px;right:16px;color:white;font-size:16px;font-weight:700;background:rgba(0,0,0,.35);padding:8px 14px;border-radius:12px;z-index:9999}
+/* Ctrl buttons */
+.ctrl-btn{position:fixed;right:16px;padding:11px 16px;border:none;border-radius:12px;font-weight:700;cursor:pointer;z-index:9999;font-size:14px}
+#reset-btn{bottom:60px;background:#ff3b3b;color:white}
+#close-btn{bottom:16px;background:#333;color:white}
+/* Lang indicator */
+#lang-ind{position:fixed;top:16px;left:16px;color:white;font-size:13px;font-weight:700;background:rgba(0,0,0,.35);padding:7px 12px;border-radius:10px;z-index:9999}
+
+/* MODAL */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:99999;padding:16px}
+.modal-box{background:#1a1a2e;border:2px solid rgba(255,255,255,.18);border-radius:20px;padding:36px 32px;display:flex;flex-direction:column;gap:14px;align-items:center;width:min(400px,96vw)}
+.modal-box h2{color:white;font-size:20px;font-weight:800;letter-spacing:1px;text-align:center}
+.m-input{width:100%;padding:13px 16px;font-size:18px;border-radius:12px;border:none;outline:none;font-weight:700;text-align:center}
+.m-btn{padding:12px 28px;background:#00c853;color:white;border:none;border-radius:12px;font-size:17px;font-weight:800;cursor:pointer;width:100%}
+.m-btn:hover{background:#00a844}
+/* lang picker */
+.lang-grid{display:flex;gap:10px}
+.lp{padding:10px 20px;border:2px solid rgba(255,255,255,.35);border-radius:10px;background:transparent;color:white;font-size:16px;font-weight:700;cursor:pointer}
+.lp.active{background:rgba(255,255,255,.22);border-color:white}
+/* supplier search */
+#sup-search{width:100%;padding:11px 14px;font-size:16px;border-radius:10px;border:none;outline:none;font-weight:600}
+#sup-list{width:100%;max-height:200px;overflow-y:auto;border-radius:10px;background:white;display:none}
+.sup-item{padding:10px 14px;cursor:pointer;font-size:15px;font-weight:600;color:#1a1a2e;border-bottom:1px solid #eee}
+.sup-item:hover{background:#e8f5e9}
+
+/* offline queue badge */
+#queue-badge{position:fixed;bottom:100px;right:16px;background:rgba(255,165,0,.85);color:white;font-size:12px;font-weight:800;padding:6px 12px;border-radius:10px;z-index:9999;display:none}
+</style>
+</head>
+<body>
+
+<!-- MODALS -->
+<div class="modal" id="m-lang">
+  <div class="modal-box">
+    <h2 id="ml-title">Choose your language / Kies je taal</h2>
+    <div class="lang-grid">
+      <button class="lp" data-lang="nl">🇳🇱 NL</button>
+      <button class="lp" data-lang="en">🇬🇧 EN</button>
+      <button class="lp" data-lang="ar">🇸🇦 AR</button>
+    </div>
+    <button class="m-btn" id="ml-confirm">Confirm</button>
+  </div>
+</div>
+
+<div class="modal" id="m-name" style="display:none">
+  <div class="modal-box">
+    <h2 id="mn-title">Wat is je naam?</h2>
+    <input class="m-input" id="name-inp" type="text" autocomplete="off" spellcheck="false"/>
+    <button class="m-btn" id="mn-confirm">Verder →</button>
+  </div>
+</div>
+
+<div class="modal" id="m-init" style="display:none">
+  <div class="modal-box">
+    <h2 id="mi-title">Wat zijn je initialen?</h2>
+    <input class="m-input" id="init-inp" type="text" maxlength="5" autocomplete="off" spellcheck="false"/>
+    <button class="m-btn" id="mi-confirm">Verder →</button>
+  </div>
+</div>
+
+<div class="modal" id="m-sup" style="display:none">
+  <div class="modal-box">
+    <h2 id="ms-title">Kies leverancier</h2>
+    <input id="sup-search" type="text" placeholder="Zoek of typ..." autocomplete="off" spellcheck="false"/>
+    <div id="sup-list"></div>
+    <div style="color:rgba(255,255,255,.5);font-size:12px;text-align:center" id="ms-hint">Selecteer een leverancier om door te gaan</div>
+  </div>
+</div>
+
+<!-- UI -->
+<div id="lang-ind">NL</div>
+<div id="scan-counter">Scans: 0</div>
+<div id="sync-indicator">⟳ Syncing...</div>
+<div id="queue-badge">📤 <span id="queue-count">0</span> wachtend</div>
+
+<div id="overlay">
+  <div id="scanner-box">
+    <div id="station-label">● Grading Check Station</div>
+    <div id="supplier-bar" style="display:none">
+      <span id="ms-label">Leverancier:</span>
+      <strong id="cur-supplier"></strong>
+      <button id="change-sup-btn">↺ Wissel</button>
+    </div>
+    <input id="barcode-input" type="text" placeholder="Scan barcode..." autocomplete="off" autocorrect="off" spellcheck="false" autocomplete="new-password"/>
+    <div id="feedback">
+      <div id="green-msg"></div>
+      <div id="feedback-title"></div>
+      <div id="feedback-subtitle"></div>
+    </div>
+    <div id="grade-panel">
+      <div id="grade-row">
+        <button class="g-btn" data-g="A"><span class="sc">1</span><span id="gl-A"></span></button>
+        <button class="g-btn" data-g="B"><span class="sc">2</span><span id="gl-B"></span></button>
+        <button class="g-btn" data-g="C"><span class="sc">3</span><span id="gl-C"></span></button>
+        <button class="g-btn" data-g="D-rep"><span class="sc">4</span><span id="gl-D"></span></button>
+        <button class="g-btn" data-g="D-def"><span class="sc">5</span><span id="gl-E"></span></button>
+      </div>
+      <button id="escape-btn">⎋ Terug</button>
+    </div>
+    <div id="sub-panel">
+      <div id="sub-question"></div>
+      <div id="sub-row">
+        <button class="s-btn" id="sub-already"><span class="sc">1</span><span id="sub-al-lbl"></span></button>
+        <button class="s-btn" id="sub-custom"><span class="sc">2</span><span id="sub-cu-lbl"></span></button>
+      </div>
+      <div id="custom-input-wrap">
+        <input id="custom-input" type="text" autocomplete="off" spellcheck="false"/>
+        <button id="custom-confirm"></button>
+      </div>
+      <button id="escape-btn-sub">⎋ Terug</button>
+    </div>
+    <div id="barcode-display"></div>
+    <div id="scan-hint"></div>
+  </div>
+</div>
+
+<audio id="alert-sound" preload="auto"><source src="Gradingsound.mp3" type="audio/mpeg"></audio>
+<button class="ctrl-btn" id="reset-btn">Nieuwe sessie</button>
+<button class="ctrl-btn" id="close-btn">Afsluiten</button>
+
+<script>
+// ── Google Sheets Web App URL ─────────────────────────────────────────
+const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbxub5myYuJOE6jF5LIFRZRmOgY0v0L0dzpAX88MGcw4RqqGalo7i6QnCZoqQDZMu4pq/exec';
+
+// ── Product data ──────────────────────────────────────────────────────
+const productData = [{"Productcode": "109852765", "Barcode": "8719407050540", "Artikelcode": "7050540", "Productcode leverancier": "7050540", "Tags": "Grading", "Grading": "Rits van de rugzak is kapot – rits van de rugzak werkt niet| The zipper of the backpack is broken – The zipper of the backpack does not work| سحّاب الحقيبة مكسور – سحّاب الحقيبة لا يعمل."}, {"Productcode": "115966401", "Barcode": "8008004134624", "Artikelcode": "ALN-1200", "Productcode leverancier": "ALN-1200", "Tags": "Grading", "Grading": "Lampen werken?"}, {"Productcode": "119605780", "Barcode": "8711252193335", "Artikelcode": "19333", "Productcode leverancier": "19333", "Tags": "Grading", "Grading": "De bbq kan niet dicht door verbogen/verdraaide kleppen – het metaal is gebogen bbq kan niet in elkaar gezet worden| The BBQ cannot be closed due to bent/twisted vents – the metal is warped and the BBQ cannot be assembled| لا يمكن إغلاق الشواء بسبب الفتحات المثنية أو الملتوية – المعدن مشوّه ولا يمكن تجميع الشواء"}, {"Productcode": "123748503", "Barcode": "5410329704490", "Artikelcode": "BP-GIKLED05", "Productcode leverancier": "BP-GIKLED05", "Tags": "Grading", "Grading": "Ledverlichting brand niet| LED lighting does not work| إضاءة LED لا تعمل"}, {"Productcode": "127155421", "Barcode": "8016738768763", "Artikelcode": "WDST100/8/6", "Productcode leverancier": "WDST100/8/6", "Tags": "Grading, Damaged", "Grading": "Overdrukventiel gaat er af bij 9bar, waardoor de compressordruk terugvalt naar 6 bar – beschadigde behuizing - Noodaflaatklep is niet compleet| pressure relief valve trips at 9 bar, causing the compressor pressure to drop to 6 bar – damaged housing - Emergency relief valve is not complete| ينطلق صمام تخفيف الضغط عند 9 بار، مما يتسبب في انخفاض ضغط الضاغط إلى 6 بار - المبيت التالف - صمام تصريف الطوارئ غير مكتمل"}, {"Productcode": "127155477", "Barcode": "5410329696313", "Artikelcode": "WC106", "Productcode leverancier": "WC106", "Tags": "Grading", "Grading": "De secondewijzer loopt terug ipv vooruit – product stinkt naar rook| The second hand runs backwards instead of forwards – product smells of smoke| يتحرك عقرب الثواني إلى الخلف بدلاً من الأمام - رائحة المنتج كالدخان"}, {"Productcode": "127155703", "Barcode": "5410329696269", "Artikelcode": "WC101", "Productcode leverancier": "WC101", "Tags": "Omdoos, Opvulling, Grading", "Grading": "Klok werkt schokkerig en stelt geen tijd in| Clock works erratically and does not set time| تعمل الساعة بشكل متقطع ولا تحدد الوقت"}, {"Productcode": "127372225", "Barcode": "8008004115272", "Artikelcode": "PAT1200", "Productcode leverancier": "PAT1200", "Tags": "Fragiel, Grading", "Grading": "| Heater defect, onderste pinnetje/veertje afgebroken, schroeven ontbreken, geen warmte, infraroodlampje gebroken, beschadigd bij levering | Heater defective, bottom pin/spring broken, screws missing, no heat, infrared bulb broken, damaged on delivery | المدفأة معطلة، الدبوس/الزنبرك السفلي مكسور، البراغي مفقودة، لا يوجد حرارة، مصباح الأشعة تحت الحمراء مكسور، تالف عند التسليم |"}, {"Productcode": "128086570", "Barcode": "5996415031898, 2950018303267", "Artikelcode": "Classic Series - Super Taper", "Productcode leverancier": "0-31898", "Tags": "Grading", "Grading": "De messen gaan niet heen en weer – het product is vies| The knives do not move back and forth – the product is dirty| لا تتحرك السكاكين ذهابًا وإيابًا – المنتج متسخ.|"}, {"Productcode": "134743622", "Barcode": "8016738796674", "Artikelcode": "WE156/8/6", "Productcode leverancier": "WE156/8/6", "Tags": "Grading", "Grading": "Bouwt geen druk op| Does not build pressure| لا يبني الضغط"}, {"Productcode": "136173795", "Barcode": "8720246689204", "Artikelcode": "HOM20823", "Productcode leverancier": "HOM20823, X001H3W627", "Tags": "Grading", "Grading": "De klep van de prullen bak gaat niet helemaal open - Het compartiment waar de batterijen geplaatst moeten worden ligt uit elkaar| The lid of the trash can does not open completely - The compartment where the batteries need to be placed is falling apart| غطاء سلة المهملات لا يفتح بالكامل - المقصورة التي يجب وضع البطاريات فيها مفككة"}, {"Productcode": "136173799", "Barcode": "8720246686302, 2950019281199, 2950019281205", "Artikelcode": "STA20593 HALDEN", "Productcode leverancier": "STA20593, HALDEN, X001F9MYZ7, 8720246686302", "Tags": "Grading, Damaged", "Grading": "Product doet niks - er zit een deuk in - de klep blijft hangen gaat niet open en dicht – niet compleet – sensor doet het niet| The product does nothing - There is a dent - The lid gets stuck, does not open and close – Incomplete – Sensor does not work| المنتج لا يعمل - يوجد به انبعاج - الغطاء عالق، لا يفتح ولا يغلق – غير مكتمل – المستشعر لا يعمل"}, {"Productcode": "136239326", "Barcode": "8719558282869, 2950004837523", "Artikelcode": "HOM20258 Qubix-70 stainless steel", "Productcode leverancier": "HOM20258, Qubix-70, X000TZFJFF, 2950004837523", "Tags": "Grading", "Grading": "Product ruikt heel vies – deksel gaat niet automatisch open en dicht – doet het niet| The product smells very bad – The lid does not open and close automatically – Does not work| المنتج رائحته كريهة جدًا – الغطاء لا يفتح ولا يغلق تلقائيًا – لا يعمل"}, {"Productcode": "136239328", "Barcode": "8719558283231, 2950004837516", "Artikelcode": "HOM20244 LUX-50", "Productcode leverancier": "HOM20244, 2950004837516", "Tags": "Grading", "Grading": "Deksel gaat niet automatisch open en dicht – werkt niet| The lid does not open and close automatically – Does not work| الغطاء لا يفتح ولا يغلق تلقائيًا – لا يعمل|"}, {"Productcode": "136239385", "Barcode": "8720246684346, 2950019732318", "Artikelcode": "HOM20343", "Productcode leverancier": "HOM20343", "Tags": "Grading, Damaged", "Grading": "Deksel is stuk – product is niet compleet - het bevestiging's mechaniek van één van de armen is afgebroken| The lid is broken – The product is incomplete – The fastening mechanism of one of the arms is broken| الغطاء مكسور – المنتج غير مكتمل – آلية التثبيت لأحد الأذرع مكسورة"}, {"Productcode": "136239419", "Barcode": "8720246686319, 2950019281212", "Artikelcode": "STA20592 HALDEN", "Productcode leverancier": "STA20592 HALDEN, X001F9MWD1, 2950019281212", "Tags": "Grading, Damaged", "Grading": "De prullenbak sluit aan één kant niet volledig. – verschijnen geen pijltjes – klep gaat niet open en dicht – sensor werkt niet| The trash can does not close fully on one side – No arrows appear – The lid does not open and close – The sensor does not work| سلة المهملات لا تغلق بالكامل من جهة واحدة – لا تظهر أي أسهم – الغطاء لا يفتح ولا يغلق – المستشعر لا يعمل"}, {"Productcode": "136239425", "Barcode": "8720246686425, 2950021336542", "Artikelcode": "STA20719", "Productcode leverancier": "STA20719, 2950021336542", "Tags": "Grading", "Grading": "Grijper in de prullenbak is defect – product functioneert niet goed| The grabber in the trash can is defective – The product does not function properly| الماسك داخل سلة المهملات معطل – المنتج لا يعمل بشكل صحيح"}, {"Productcode": "136239429", "Barcode": "8720246686722, 2950021296051", "Artikelcode": "HOM20608", "Productcode leverancier": "HOM20608, X001FP26CH, 2950021296051", "Tags": "Grading, Damaged", "Grading": "Het motortje werkt niet goed waardoor de klep niet helemaal open en dicht gaat - schroeven zijn verroest – prullenbak valt steeds dicht| The motor does not work properly, causing the lid not to open and close completely – The screws are rusted – The trash can keeps closing|المحرك لا يعمل بشكل صحيح، مما يجعل الغطاء لا يفتح ولا يغلق بالكامل – البراغي صدئة – سلة المهملات تغلق باستمرار"}, {"Productcode": "136239453", "Barcode": "8720246687736, 2950021543766", "Artikelcode": "HOM20825 FONIX-42B Black", "Productcode leverancier": "HOM20825, FONIX-42B, 2950021543766", "Tags": "Grading", "Grading": "Deksel opent niet altijd en gaat na het sluiten weer vanzelf open waardoor het deksel open blijft staan| The lid does not always open and reopens by itself after closing, causing it to stay open| الغطاء لا يفتح دائمًا، ويعاد فتحه تلقائيًا بعد الإغلاق، مما يجعله يظل مفتوحًا."}, {"Productcode": "137396673", "Barcode": "8719075227329, 2950012532731", "Artikelcode": "GG0856", "Productcode leverancier": "GG0856, X0015VC27F, 2950012532731", "Tags": "Grading", "Grading": "Een deel van de lampen werkt niet| Some of the lights do not work| جزء من المصابيح لا يعمل."}, {"Productcode": "138477121", "Barcode": "8711252474427", "Artikelcode": "871125247442", "Productcode leverancier": "871125247442", "Tags": "Grading", "Grading": "Product veert niet – product is niet compleet – product werkt niet| Product does not spring – product is incomplete – product does not work| المنتج لا يرتد – المنتج غير مكتمل – المنتج لا يعمل"}, {"Productcode": "138477170", "Barcode": "8711252138176", "Artikelcode": "871125213817", "Productcode leverancier": "871125213817", "Tags": "Grading", "Grading": "Werkt niet goed| Does not work properly| لا يعمل بشكل جيد"}, {"Productcode": "138477194", "Barcode": "8711252249827", "Artikelcode": "871125224982", "Productcode leverancier": "871125224982", "Tags": "Grading", "Grading": "Batterij doet het niet| The battery does not work| البطارية لا تعمل"}, {"Productcode": "138477233", "Barcode": "8711252185545", "Artikelcode": "871125218554", "Productcode leverancier": "871125218554", "Tags": "Grading", "Grading": "De houder waar de waterkoker op moet plaatsen is defect, er zitten diverse onderdelen Los. Ook krijg je de waterkoker er niet op, dus doet hij het ook niet| The base where the kettle should be placed is defective; several parts are loose. You also cannot place the kettle on it, so it doesn't work| القاعدة التي يجب وضع الغلاية عليها معطلة، وهناك عدة أجزاء مفككة. لا يمكن وضع الغلاية عليها، وبالتالي فهي لا تعمل."}, {"Productcode": "138477281", "Barcode": "8711252548470", "Artikelcode": "871125254847", "Productcode leverancier": "871125254847", "Tags": "Grading", "Grading": "De deksel is in stukken gebroken – de waterkoker gaat niet aan| The lid is broken into pieces – the kettle does not turn on| الغطاء مكسور إلى قطع – الغلاية لا تعمل"}, {"Productcode": "138477332", "Barcode": "8711252184838", "Artikelcode": "871125218483", "Productcode leverancier": "871125218483", "Tags": "Grading, Damaged", "Grading": "Product is afgebroken – kapotte onderdelen product kan niet in elkaar worden gezet – koppelstuk gebroken| Product is broken – damaged parts, product cannot be assembled – connector piece is broken| المنتج مكسور – أجزاء تالفة، لا يمكن تجميع المنتج – قطعة التوصيل مكسورة"}, {"Productcode": "138477353", "Barcode": "8711252085395", "Artikelcode": "871125208539", "Productcode leverancier": "871125208539", "Tags": "Grading", "Grading": "Het servies is gebroken| The tableware is broken| أطقم الأطباق مكسورة"}, {"Productcode": "138477410", "Barcode": "8711252228730", "Artikelcode": "871125222873", "Productcode leverancier": "871125222873", "Tags": "Grading", "Grading": "Het bord is gescheurd na het eerste gebruik – product niet compleet – bal is lek| The plate cracked after the first use – product is incomplete – ball is leaking| انشق الطبق بعد أول استخدام – المنتج غير مكتمل – الكرة مثقوبة"}, {"Productcode": "138490005", "Barcode": "8711252187228", "Artikelcode": "871125218722", "Productcode leverancier": "871125218722", "Tags": "Grading", "Grading": "Weegschaal begint met meten en geeft veel cijfers. Registreert uiteindelijk niks en valt uit – weegschaal blijft op 0 staan – gaat niet aan| The scale starts measuring and displays many numbers but ultimately records nothing and turns off – the scale stays at 0 – does not turn on| تبدأ الميزان بالقياس وتعرض العديد من الأرقام لكنها لا تسجل أي شيء في النهاية وتنطفئ – تبقى الميزان على الرقم 0 – لا تعمل"}, {"Productcode": "138490198", "Barcode": "4895229104440", "Artikelcode": "489522910444", "Productcode leverancier": "489522910444", "Tags": "Grading", "Grading": "De CD-lade zit vast/werkt niet – het apparaat kan niet worden gestart – DVD speler geeft disk error en kan de dvd niet laden/afspelen| The CD tray is stuck/does not work – the device cannot be started – DVD player shows a disk error and cannot load/play the DVD| درج الأسطوانة عالق / لا يعمل – لا يمكن تشغيل الجهاز – مشغل DVD يعرض خطأ في القرص ولا يمكنه تحميل / تشغيل الـ DVD"}, {"Productcode": "138490237", "Barcode": "8711252182216", "Artikelcode": "871125218221", "Productcode leverancier": "871125218221", "Tags": "Grading", "Grading": "Plaat wordt niet warm – plaat wordt heel even warm en valt daarna uit| The plate does not heat up – the plate gets warm briefly and then shuts off| اللوح لا يسخن – يسخن اللوح للحظة قصيرة ثم ينطفئ"}, {"Productcode": "138490250", "Barcode": "8711252187808", "Artikelcode": "871125218780", "Productcode leverancier": "871125218780", "Tags": "Grading", "Grading": "Gloeistaaf is kapot – lamp gebroken| Heating element is broken – lamp is broken| عنصر التسخين مكسور – المصباح مكسور"}, {"Productcode": "138502868", "Barcode": "8711252249889", "Artikelcode": "871125224988", "Productcode leverancier": "871125224988", "Tags": "Grading", "Grading": "De afstandsbediening gaat niet aan en ook niet met een nieuwe batterij. Hierdoor is verbinden met bluetooth niet mogelijk – zit los en blijft niet vast zitten| The remote control does not turn on, even with a new battery. As a result, connecting via Bluetooth is not possible – it is loose and does not stay in place| جهاز التحكم لا يعمل حتى مع بطارية جديدة، وبالتالي لا يمكن الاتصال عبر البلوتوث – الجهاز غير ثابت ولا يبقى في مكانه"}, {"Productcode": "138502870", "Barcode": "5055374710845", "Artikelcode": "505537471084", "Productcode leverancier": "505537471084", "Tags": "Grading, Damaged", "Grading": "De headset werkt niet – niet compleet – product gaat niet aan, ook niet na opladen – kan niet verbinden met telefoon| The headset does not work – incomplete – product does not turn on, even after charging – cannot connect to phone| سماعة الرأس لا تعمل – المنتج غير مكتمل – لا يعمل حتى بعد الشحن – لا يمكن توصيله بالهاتف"}, {"Productcode": "138503002", "Barcode": "8711252270104", "Artikelcode": "871125227010", "Productcode leverancier": "871125227010", "Tags": "Grading", "Grading": "Kan niet in elkaar gezet worden omdat schroefdraad ontbreekt – product niet compleet (schroeven missen)| Cannot be assembled due to missing threads – product not complete (missing screws)| لا يمكن تجميعها بسبب وجود خيوط مفقودة - المنتج غير مكتمل (مسامير مفقودة)"}, {"Productcode": "138503110", "Barcode": "8717496633170", "Artikelcode": "871749663317", "Productcode leverancier": "871749663317", "Tags": "Grading, Damaged", "Grading": "Afstandsbediening doet het niet – stekker doet het niet – product gaat niet aan| Remote control not working – plug not working – product not turning on| جهاز التحكم عن بعد لا يعمل – القابس لا يعمل – المنتج لا يعمل"}, {"Productcode": "138503155", "Barcode": "8711252182001", "Artikelcode": "871125218200", "Productcode leverancier": "871125218200", "Tags": "Grading", "Grading": "Frituurpan gaat niet aan – hij verwarmt even, maar stopt er na een tijd mee - de lampjes doen het niet – gebruikssporen (nog vet in de pan)| Deep fryer won't turn on - it heats up for a while but stops after a while - the lights don't work - signs of use (there's still fat in the pan)| المقلاة العميقة لا تعمل - تسخن لفترة، ولكنها تتوقف بعد فترة - الأضواء لا تعمل - علامات الاستخدام (لا تزال الدهون في المقلاة)"}, {"Productcode": "138505245", "Barcode": "5035048333693", "Artikelcode": "503504833369", "Productcode leverancier": "503504833369", "Tags": "Grading", "Grading": "De lader werkt niet als deze is aangesloten om een batterij op te laden – oplader werkt niet| The charger does not work when connected to charge a battery – charger not working| الشاحن لا يعمل عند توصيله لشحن البطارية – الشاحن لا يعمل"}, {"Productcode": "138505272", "Barcode": "5060285170190", "Artikelcode": "506028517019", "Productcode leverancier": "506028517019", "Tags": "Grading", "Grading": "De omvormers werken niet naar behoren in meerdere voertuigen aangesloten en heeft kortsluiting veroorzaakt en heeft bij meerdere voertuigen de zekeringen eruit gebrand – product is niet compleet| The inverters are not working properly in multiple vehicles connected and have caused a short circuit and blown the fuses in multiple vehicles – product is not complete| لا تعمل المحولات بشكل صحيح في العديد من المركبات المتصلة وقد تسببت في حدوث ماس كهربائي وتفجير الصمامات في العديد من المركبات - المنتج غير كامل"}, {"Productcode": "138505275", "Barcode": "8711252254388, 2950023724132", "Artikelcode": "871125225438", "Productcode leverancier": "871125225438", "Tags": "Grading", "Grading": "Papier loopt gelijk vast, en gaat niet door met versnipperen – doet het niet| Paper gets stuck immediately and won't continue shredding – doesn't work| تعلق الورقة على الفور ولا تستمر في التقطيع - لا تعمل"}, {"Productcode": "138505320", "Barcode": "8711252173498", "Artikelcode": "871125217349", "Productcode leverancier": "871125217349", "Tags": "Grading", "Grading": "Product is niet compleet (onderstuk ventilator mist waardoor die niet kan staan) – schakelaar is defect – draaiknop werkt niet – apparaat gaat niet aan Product is niet compleet (onderstuk ventilator mist waardoor die niet kan staan) – schakelaar is defect – draaiknop werkt niet – apparaat gaat niet aan| Product is not complete (bottom of fan is missing so it cannot stand) – switch is defective – rotary knob does not work – device does not turn on| المنتج غير كامل (الجزء السفلي من المروحة مفقود لذا لا يمكنها الوقوف) - المفتاح معيب - مقبض الدوران لا يعمل - الجهاز لا يعمل"}, {"Productcode": "138505342", "Barcode": "5012786040564", "Artikelcode": "501278604056", "Productcode leverancier": "501278604056", "Tags": "Grading", "Grading": "Het product laadt niet op – de oortjes maken geen connectie met bluetooth – slechte batterij valt heel snel uit| The product does not charge – the earphones do not connect to Bluetooth – bad battery runs out very quickly| المنتج لا يشحن – سماعات الأذن لا تتصل بالبلوتوث – البطارية سيئة وتنتهي بسرعة كبيرة"}, {"Productcode": "138505369", "Barcode": "8711252195735", "Artikelcode": "871125219573", "Productcode leverancier": "871125219573", "Tags": "Grading", "Grading": "De hoogte-instelknop mist – ventilator is stoffig| The height adjustment knob is missing – fan is dusty| مقبض ضبط الارتفاع مفقود – المروحة مغبرة"}, {"Productcode": "139118727", "Barcode": "8711252171944", "Artikelcode": "71944", "Productcode leverancier": "71944", "Tags": "Grading", "Grading": "Kachel gaat niet aan – kachel warmt niet op – maakt veel lawaai – koude lucht| The heater doesn't turn on – it doesn't heat up – makes a lot of noise – blows cold air| المدفأة لا تعمل – لا تسخن – تصدر ضجيجًا عاليًا – تنفث هواءً باردًا."}, {"Productcode": "139396824", "Barcode": "5012786039841", "Artikelcode": "39841", "Productcode leverancier": "39841", "Tags": "Grading", "Grading": "een oordopje doet het niet – oordopjes maken geen verbinding| One earbud doesn't work – the earbuds won't connect| أحد السماعتين لا يعمل – السماعتان لا تتصلان."}, {"Productcode": "142929448", "Barcode": "8720726588058, 2950026280833", "Artikelcode": "588058", "Productcode leverancier": "588058", "Tags": "Grading", "Grading": "Werkend?"}, {"Productcode": "143088627", "Barcode": "8720195251477, 2950017110774", "Artikelcode": "251477", "Productcode leverancier": "251477", "Tags": "Grading", "Grading": "Luchtbed heeft een gat – luchtbed loopt leeg| The air mattress has a hole – the air mattress is deflating| مرتبة الهواء بها ثقب – مرتبة الهواء تنفد|"}, {"Productcode": "147178161", "Barcode": "6942138985481", "Artikelcode": "67403", "Productcode leverancier": "67403", "Tags": "Grading", "Grading": "Luchtbed loopt leeg| The air mattress deflates| مرتبة الهواء تفقد الهواء / تفرغ من الهواء."}, {"Productcode": "150749911", "Barcode": "8712876172713", "Artikelcode": "IKI7735MAT", "Productcode leverancier": "IKI7735MAT", "Tags": "Grading, IBOOD High Returnrate, High Selling Price", "Grading": "Doet het niet| Does not work| لا يعمل"}];
+
+const suppliers = ["1AGI DC","1ALV DC","1AMC DC","1AYE DC","1BPT DC","1BRG DC","1BUG DC","1CIN DC","1DDY DC","1DEN DC","1DK DC","1ELH DC","1EMB DC","1GOW DC","1GSI DC","1IBO DC","1LTB DC","1MMO DC","1MON DC","1NIC DC","1ODC DC","1OUT DC","1PUR DC","1QSP DC","1SBC DC","1SPO DC","1TCH DC","1TLC DC","1VAM DC","1VEL DC","1VOC DC","1WF DC","1WIT DC","2AAA DC","2ACH DC","2ADJ DC","2AGI DC","2AGL DC","2AIR DC","2ALV DC","2AMA DC","2AMC DC","2AMO DC","2AOS DC","2ART DC","2ATH DC","2ATS DC","2AVT DC","2AYE DC","2BAT DC","2BBF DC","2BBL DC","2BDO DC","2BFF DC","2BLA DC","2BLD DC","2BLK DC","2BLU DC","2BOM DC","2BOU DC","2BPT DC","2BRD DC","2BRE DC","2BRI DC","2BRV DC","2BSK DC","2BSM DC","2BTC DC","2BTL DC","2BUD DC","2BUF DC","2BUG DC","2BUU DC","2BXX DC","2CAS DC","2CFH DC","2CHA DC","2CHE DC","2CIN DC","2CLE DC","2CNX DC","2CRM DC","2CSB DC","2CSW DC","2D4Y DC","2DAM DC","2DAS DC","2DDY DC","2DEN DC","2DIV DC","2DK DC","2DLD DC","2DLG DC","2DNZ DC","2DOB DC","2DPK DC","2DVD DC","2EAK DC","2ECH DC","2EDC DC","2EDG DC","2EDM DC","2ELH DC","2ELV DC","2EMQ DC","2ERG DC","2EVN DC","2EWS DC","2FAR DC","2FGP DC","2FLB DC","2FNQ DC","2FTG DC","2FTL DC","2FTW DC","2GAR DC","2GFE DC","2GGO DC","2GKA DC","2GMT DC","2GOS DC","2GOW DC","2GRZ DC","2GSI DC","2GTN DC","2HEL DC","2HIL DC","2HLS DC","2HOM DC","2HOZ DC","2HPM DC","2HST DC","2HWK DC","2HYB DC","2HYC DC","2HYU DC","2IBO DC","2IDS DC","2IFY DC","2IND DC","2INV DC","2ISE DC","2IZA DC","2JAS DC","2JSY DC","2JWG DC","2KAR DC","2KEB DC","2KEM DC","2KLG DC","2KOI DC","2KPM DC","2KTL DC","2LEO DC","2LFG DC","2LHR DC","2LIF DC","2LKG DC","2LOO DC","2LTB DC","2MAG DC","2MAI DC","2MAO DC","2MAT DC","2MAU DC","2MBH DC","2MCB DC","2MCM DC","2MCT","2MED DC","2MEG DC","2MIR DC","2MIS DC","2MKA DC","2MLD DC","2MMA DC","2MMB DC","2MMO DC","2MON DC","2MOS DC","2MOV DC","2MRH DC","2MST DC","2MSY DC","2MTZ DC","2N25 DC","2NBX DC","2NED DC","2NEX DC","2NFR DC","2NHW DC","2NIC DC","2NOL DC","2NOO DC","2NOV DC","2NPI DC","2NTM DC","2NUM DC","2NUT DC","2NVT DC","2OFP DC","2OFS DC","2OKB DC","2OLV DC","2OPM DC","2OPP DC","2OPT DC","2OTT DC","2OUT DC","2PLT DC","2PRA DC","2PUR DC","2PYG DC","2QMX DC","2QSP DC","2QTP DC","2QUA DC","2RAS DC","2RBD DC","2RBS DC","2RDC - DC","2RDP DC","2REN DC","2RIT DC","2ROS DC","2RYL DC","2SAH DC","2SAL DC","2SAN DC","2SB2 DC","2SBC DC","2SBE DC","2SBI DC","2SBR DC","2SCF DC","2SCK DC","2SER DC","2SFK DC","2SFS DC","2SHT DC","2SJU DC","2SKL DC","2SKR DC","2SKY DC","2SLD DC","2SMC DC","2SMH DC","2SNB DC","2SOB DC","2SOD DC","2SOL DC","2SPE DC","2SPF DC","2SPO DC","2SPS DC","2SSN DC","2STE DC","2STX DC","2SUG DC","2SUN DC","2SV2 DC","2SVB DC","2SWA DC","2SWP DC","2TBS DC","2TCH DC","2TCW DC","2TEM DC","2TGB DC","2THK DC","2TIB DC","2TJP DC","2TKP DC","2TLC DC","2TLS DC","2TOY DC","2TRE DC","2TRP DC","2TSM DC","2TTC DC","2TTD DC","2TTY DC","2UBS DC","2UMB DC","2URG DC","2VAH DC","2VAM DC","2VBX DC","2VDG DC","2VEL DC","2VID DC","2VIT DC","2VOC DC","2VOF DC","2VPG DC","2VS2 DC","2VSA DC","2VTS DC","2VUL DC","2VVI DC","2VWR DC","2VXL DC","2WAD DC","2WAY DC","2WDM DC","2WDU DC","2WF DC","2WHL DC","2WHV DC","2WIT DC","2WOL DC","2WRT DC","2WTC DC","2WWS DC","2XCR DC","2YAH DC","2YOR DC","2ZER DC","3ACH DC","3ADJ DC","3AIR DC","3AMC DC","3AMO DC","3AOS DC","3ATS DC","3AVT DC","3AYE DC","3BAT DC","3BDO DC","3BFF DC","3BLA DC","3BLD DC","3BLU DC","3BOM DC","3BOU DC","3BRD DC","3BRI DC","3BRV DC","3BSK DC","3BUD DC","3BUF DC","3CFH DC","3CHE DC","3CLE DC","3CSW DC","3D4Y DC","3DAS DC","3DDY DC","3DEN DC","3DK DC","3DOB DC","3DPK DC","3DVD DC","3EAK DC","3ECH DC","3EDM DC","3ELH DC","3ELV DC","3EWS DC","3FGP DC","3FNQ DC","3FTG DC","3FTW","3GOS DC","3GTN DC","3HOM DC","3HWK DC","3HYC DC","3IBO DC","3IDS DC","3IFY DC","3INV DC","3JAS DC","3JSY DC","3JWG DC","3KAR DC","3KEM DC","3KPM DC","3LFG DC","3LHR DC","3LIF DC","3LKG DC","3MAG DC","3MAI DC","3MAT DC","3MAU DC","3MIR DC","3MIS DC","3MMB DC","3MMO DC","3MOA DC","3MON DC","3MOS DC","3MOV DC","3MST DC","3MSY DC","3MTZ DC","3N25 DC","3NFR DC","3NIC DC","3NOL DC","3NOO DC","3NUM DC","3NVT DC","3OFP DC","3OFS DC","3OLV DC","3OPM DC","3OPP DC","3OPT DC","3OTT DC","3OUT DC","3PUR DC","3QMX DC","3QUA DC","3RDP DC","3REN DC","3ROS DC","3SAN DC","3SBC DC","3SBE DC","3SCK DC","3SFS DC","3SKL DC","3SKR DC","3SKY DC","3SMC DC","3SNB DC","3SOB DC","3SOL DC","3SPO DC","3SSN DC","3STE DC","3STX DC","3SUN","3SWP DC","3TBS DC","3TCW DC","3TIB DC","3TLC DC","3TLS DC","3TRE DC","3TTC DC","3TTD DC","3URG DC","3VAH DC","3VBX DC","3VDG DC","3VEL DC","3VID DC","3VOC DC","3VPG DC","3VSA DC","3VUL DC","3VVI DC","3VXL DC","3WAY DC","3WDM DC","3WDU DC","3WHL DC","3WHV DC","3WIT DC","3WTC DC","amazon","ATM DC","AVA DC","BAT DC","BOU DC","BUG DC","BUU DC","CFH DC","DRB DC","EDC DC","ELK DC","EUG DC","EUR DC","EXP DC","FSH DC","GEK DC","GRZ DC","GUD DC","HAT DC","HHI DC","HOL DC","HOZ DC","HRT DC","HYU DC","HZL DC","INT DC","JWG DC","KEB DC","KEM DC","KMP DC","KPM DC","MDO DC","MEG DC","MON DC","New Returns","NRD DC","Perel","PRA DC","RYL DC","SBE DC","Scheppach DC","Scheppach DS","SVR DC","TOY DC","TSM DC","TXS DC","UPP DC","VEL DC","VSA DC","WF DC","ZEP DC","ZPR DC"];
+
+// ── i18n ──────────────────────────────────────────────────────────────
+const T = {
+  nl:{
+    nameQ:"Wat is je naam?",namePh:"Voer je naam in...",
+    initQ:"Wat zijn je initialen?",initPh:"bv. JD",
+    supQ:"Kies leverancier",supPh:"Zoek of typ...",supHint:"Selecteer een leverancier",supLabel:"Leverancier:",supChange:"↺ Wissel",
+    scanHint:"Scan of typ een barcode en druk op Enter",
+    green:"U kunt dit product graden zoals u normaal ook doet",
+    gradeQ:"Kies beoordeling:",
+    grades:["Perfect","2dekans","Schoonmaak","Reparatie","Defect"],
+    repQ:"Reparatie reden:",repGiven:"Reden al gegeven",repCustom:"Anders...",
+    defQ:"Defect reden:",defGiven:"Defect al gegeven",defCustom:"Anders...",
+    customPh:"Typ reden...",customOk:"Bevestigen",
+    next:"Verder →",confirm:"Bevestigen",
+    resetConfirm:"Nieuwe sessie starten?",
+    closeConfirm:"Afsluiten?",
+    back:"⎋ Terug",
+    syncOk:"✓ Opgeslagen",syncErr:"✗ Fout - opnieuw proberen",syncing:"⟳ Opslaan...",
+    offline:"📤 wachtend",
+  },
+  en:{
+    nameQ:"What is your name?",namePh:"Enter your name...",
+    initQ:"What are your initials?",initPh:"e.g. JD",
+    supQ:"Choose supplier",supPh:"Search or type...",supHint:"Select a supplier",supLabel:"Supplier:",supChange:"↺ Switch",
+    scanHint:"Scan or type a barcode and press Enter",
+    green:"You can grade this product as you normally would",
+    gradeQ:"Choose assessment:",
+    grades:["Perfect","2nd chance","Cleaning","Repair","Defect"],
+    repQ:"Repair reason:",repGiven:"Reason already given",repCustom:"Other...",
+    defQ:"Defect reason:",defGiven:"Defect already given",defCustom:"Other...",
+    customPh:"Type reason...",customOk:"Confirm",
+    next:"Next →",confirm:"Confirm",
+    resetConfirm:"Start new session?",
+    closeConfirm:"Close?",
+    back:"⎋ Back",
+    syncOk:"✓ Saved",syncErr:"✗ Error - retrying",syncing:"⟳ Saving...",
+    offline:"📤 pending",
+  },
+  ar:{
+    nameQ:"ما اسمك؟",namePh:"أدخل اسمك...",
+    initQ:"ما هي أحرفك الأولى؟",initPh:"مثال: JD",
+    supQ:"اختر المورد",supPh:"ابحث أو اكتب...",supHint:"اختر موردًا",supLabel:"المورد:",supChange:"↺ تغيير",
+    scanHint:"امسح الباركود واضغط Enter",
+    green:"يمكنك تصنيف هذا المنتج كما تفعل عادةً",
+    gradeQ:"اختر التقييم:",
+    grades:["ممتاز","فرصة ثانية","تنظيف","إصلاح","معطوب"],
+    repQ:"سبب الإصلاح:",repGiven:"السبب معطى مسبقًا",repCustom:"أخرى...",
+    defQ:"سبب العطل:",defGiven:"العطل معطى مسبقًا",defCustom:"أخرى...",
+    customPh:"اكتب السبب...",customOk:"تأكيد",
+    next:"التالي →",confirm:"تأكيد",
+    resetConfirm:"بدء جلسة جديدة؟",
+    closeConfirm:"إغلاق؟",
+    back:"⎋ رجوع",
+    syncOk:"✓ تم الحفظ",syncErr:"✗ خطأ - إعادة المحاولة",syncing:"⟳ جارٍ الحفظ...",
+    offline:"📤 في الانتظار",
+  }
+};
+
+const gradeWords = {A:"Perfect",B:"2dekans",C:"Cleaning","D-rep":"Repair","D-def":"Defect"};
+
+// ── State ─────────────────────────────────────────────────────────────
+let activeLang  = localStorage.getItem('activeLang') || '';
+let userName    = localStorage.getItem('userName') || '';
+let userInit    = localStorage.getItem('userInit') || '';
+let supplier    = localStorage.getItem('supplier') || '';
+let sessionId   = localStorage.getItem('sessionId') || genId();
+let totalScans  = parseInt(localStorage.getItem('totalScans'))||0;
+let offlineQueue= JSON.parse(localStorage.getItem('offlineQueue'))||[];
+let pendingScan = null;
+let pendingGrade= null;
+
+localStorage.setItem('sessionId', sessionId);
+
+function genId(){
+  let id='SC';
+  for(let i=0;i<8;i++) id+=Math.floor(Math.random()*10);
+  return id;
+}
+
+// ── DOM ───────────────────────────────────────────────────────────────
+const overlay      = document.getElementById('overlay');
+const bInput       = document.getElementById('barcode-input');
+const fbTitle      = document.getElementById('feedback-title');
+const fbSub        = document.getElementById('feedback-subtitle');
+const greenMsg     = document.getElementById('green-msg');
+const scanHintEl   = document.getElementById('scan-hint');
+const bcDisp       = document.getElementById('barcode-display');
+const scanCtr      = document.getElementById('scan-counter');
+const gradePanel   = document.getElementById('grade-panel');
+const subPanel     = document.getElementById('sub-panel');
+const subQ         = document.getElementById('sub-question');
+const subAlready   = document.getElementById('sub-already');
+const subCustom    = document.getElementById('sub-custom');
+const custWrap     = document.getElementById('custom-input-wrap');
+const custInp      = document.getElementById('custom-input');
+const custConfirm  = document.getElementById('custom-confirm');
+const supplierBar  = document.getElementById('supplier-bar');
+const curSupEl     = document.getElementById('cur-supplier');
+const langInd      = document.getElementById('lang-ind');
+const sound        = document.getElementById('alert-sound');
+const supSearch    = document.getElementById('sup-search');
+const supList      = document.getElementById('sup-list');
+const syncInd      = document.getElementById('sync-indicator');
+const queueBadge   = document.getElementById('queue-badge');
+const queueCount   = document.getElementById('queue-count');
+const escapeBtnGrade = document.getElementById('escape-btn');
+const escapeBtnSub   = document.getElementById('escape-btn-sub');
+
+// ── i18n apply ────────────────────────────────────────────────────────
+function t(k){return (T[activeLang||'nl']||T['nl'])[k]||'';}
+
+function applyLang(){
+  if(!activeLang) activeLang='nl';
+  langInd.textContent = activeLang.toUpperCase();
+  document.querySelectorAll('.lp').forEach(b=>b.classList.toggle('active',b.dataset.lang===activeLang));
+  document.querySelector('#m-name h2').textContent   = t('nameQ');
+  document.getElementById('name-inp').placeholder    = t('namePh');
+  document.querySelector('#mn-confirm').textContent  = t('next');
+  document.querySelector('#m-init h2').textContent   = t('initQ');
+  document.getElementById('init-inp').placeholder    = t('initPh');
+  document.querySelector('#mi-confirm').textContent  = t('next');
+  document.querySelector('#m-sup h2').textContent    = t('supQ');
+  supSearch.placeholder = t('supPh');
+  document.getElementById('ms-hint').textContent     = t('supHint');
+  document.getElementById('ms-label').textContent    = t('supLabel');
+  document.getElementById('change-sup-btn').textContent = t('supChange');
+  scanHintEl.textContent = t('scanHint');
+  greenMsg.textContent   = t('green');
+  const gl = t('grades');
+  document.getElementById('gl-A').textContent = gl[0];
+  document.getElementById('gl-B').textContent = gl[1];
+  document.getElementById('gl-C').textContent = gl[2];
+  document.getElementById('gl-D').textContent = gl[3];
+  document.getElementById('gl-E').textContent = gl[4];
+  custInp.placeholder = t('customPh');
+  custConfirm.textContent = t('customOk');
+  escapeBtnGrade.textContent = t('back');
+  escapeBtnSub.textContent   = t('back');
+}
+
+// ── Modal flow ────────────────────────────────────────────────────────
+function showModal(id){['m-lang','m-name','m-init','m-sup'].forEach(m=>document.getElementById(m).style.display=m===id?'flex':'none');}
+function hideAllModals(){['m-lang','m-name','m-init','m-sup'].forEach(m=>document.getElementById(m).style.display='none');}
+
+function startFlow(){
+  if(!activeLang){showModal('m-lang');return;}
+  applyLang();
+  if(!userName){showModal('m-name');document.getElementById('name-inp').focus();return;}
+  if(!userInit){showModal('m-init');document.getElementById('init-inp').focus();return;}
+  if(!supplier){showModal('m-sup');renderSupList('');supSearch.value='';supSearch.focus();return;}
+  hideAllModals();
+  showSupBar();
+  updateCounter(false); // refresh display without incrementing
+  focusInput();
+  flushOfflineQueue(); // try to send any queued items
+}
+
+// Lang
+document.querySelectorAll('.lp').forEach(b=>b.classList.toggle('active',b.dataset.lang==='nl'));
+document.querySelectorAll('.lp').forEach(b=>b.addEventListener('click',()=>{
+  activeLang=b.dataset.lang;
+  document.querySelectorAll('.lp').forEach(x=>x.classList.toggle('active',x.dataset.lang===activeLang));
+}));
+document.getElementById('ml-confirm').addEventListener('click',()=>{
+  if(!activeLang) activeLang='nl';
+  localStorage.setItem('activeLang',activeLang);
+  applyLang();
+  showModal('m-name');
+  document.getElementById('name-inp').focus();
+});
+
+// Name
+document.getElementById('mn-confirm').addEventListener('click',()=>{
+  const v=document.getElementById('name-inp').value.trim();
+  if(!v) return;
+  userName=v; localStorage.setItem('userName',userName);
+  showModal('m-init'); document.getElementById('init-inp').focus();
+});
+document.getElementById('name-inp').addEventListener('keydown',e=>{if(e.key==='Enter') document.getElementById('mn-confirm').click();});
+
+// Initials
+document.getElementById('mi-confirm').addEventListener('click',()=>{
+  const v=document.getElementById('init-inp').value.trim().toUpperCase();
+  if(!v) return;
+  userInit=v; localStorage.setItem('userInit',userInit);
+  showModal('m-sup'); renderSupList(''); supSearch.value=''; supSearch.focus();
+});
+document.getElementById('init-inp').addEventListener('keydown',e=>{if(e.key==='Enter') document.getElementById('mi-confirm').click();});
+
+// Supplier
+function renderSupList(q){
+  const fil = suppliers.filter(s=>s.toLowerCase().includes(q.toLowerCase()));
+  supList.innerHTML='';
+  if(!fil.length){supList.style.display='none';return;}
+  supList.style.display='block';
+  fil.slice(0,80).forEach(s=>{
+    const d=document.createElement('div');
+    d.className='sup-item'; d.textContent=s;
+    d.addEventListener('click',()=>selectSupplier(s));
+    supList.appendChild(d);
+  });
+}
+function selectSupplier(s){
+  supplier=s; localStorage.setItem('supplier',supplier);
+  hideAllModals(); showSupBar(); focusInput();
+}
+supSearch.addEventListener('input',()=>renderSupList(supSearch.value));
+supSearch.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const first=supList.querySelector('.sup-item');
+    if(first) first.click();
+  }
+});
+document.getElementById('change-sup-btn').addEventListener('click',()=>{
+  showModal('m-sup'); renderSupList(''); supSearch.value=''; supSearch.focus();
+});
+function showSupBar(){
+  curSupEl.textContent=supplier;
+  supplierBar.style.display='flex';
+}
+
+// ── Sync to Google Sheets ─────────────────────────────────────────────
+function showSync(state,msg){
+  syncInd.className = state;
+  syncInd.textContent = msg;
+  syncInd.style.display = 'block';
+  if(state==='ok'||state==='err'){
+    setTimeout(()=>{syncInd.style.display='none';},3000);
+  }
+}
+
+async function sendToSheets(row){
+  showSync('syncing', t('syncing'));
+  try {
+    const res = await fetch(SHEETS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(row)
+    });
+    // no-cors always returns opaque response — we assume success
+    showSync('ok', t('syncOk'));
+    return true;
+  } catch(err){
+    showSync('err', t('syncErr'));
+    return false;
+  }
+}
+
+async function flushOfflineQueue(){
+  if(!offlineQueue.length) return;
+  const toSend = [...offlineQueue];
+  for(let i=0;i<toSend.length;i++){
+    const ok = await sendToSheets(toSend[i]);
+    if(ok){
+      offlineQueue.shift();
+      localStorage.setItem('offlineQueue',JSON.stringify(offlineQueue));
+      updateQueueBadge();
+    } else {
+      break; // stop if network is down
+    }
+  }
+}
+
+function updateQueueBadge(){
+  if(offlineQueue.length>0){
+    queueBadge.style.display='block';
+    queueCount.textContent=offlineQueue.length;
+  } else {
+    queueBadge.style.display='none';
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────
+function getGradingText(raw){
+  if(!raw) return '';
+  const parts=raw.replace(/^\||\|$/g,'').split('|').map(s=>s.trim()).filter(Boolean);
+  return parts[{nl:0,en:1,ar:2}[activeLang]??0]||parts[0]||'';
+}
+function nowDate(){
+  const d=new Date();
+  return `${String(d.getDate()).padStart(2,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${d.getFullYear()}`;
+}
+function nowTime(){
+  const d=new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+}
+function focusInput(){
+  const anyModal=['m-lang','m-name','m-init','m-sup'].some(id=>document.getElementById(id).style.display!=='none');
+  if(anyModal||gradePanel.style.display==='flex'||subPanel.style.display==='flex') return;
+  bInput.focus();
+}
+
+// Counter: pass increment=true only when a grade is fully completed
+function updateCounter(increment){
+  if(increment){
+    totalScans++;
+    localStorage.setItem('totalScans',totalScans);
+  }
+  scanCtr.textContent=`Scans: ${totalScans}`;
+}
+
+// ── Escape / Cancel ────────────────────────────────────────────────────
+function cancelScan(){
+  pendingScan=null; pendingGrade=null;
+  hideGradePanel();
+  subPanel.style.display='none';
+  custWrap.style.display='none';
+  showIdle();
+  focusInput();
+}
+
+escapeBtnGrade.addEventListener('click', cancelScan);
+escapeBtnSub.addEventListener('click', ()=>{
+  // go back to grade panel, not all the way out
+  subPanel.style.display='none';
+  custWrap.style.display='none';
+  pendingGrade=null;
+  showGradePanel();
+});
+
+// ── Display ───────────────────────────────────────────────────────────
+function showGreen(){
+  overlay.className='green';
+  greenMsg.style.display='block';
+  fbTitle.style.display='none'; fbSub.style.display='none';
+  bcDisp.style.display='none'; scanHintEl.style.display='none';
+}
+function showRed(product,barcode){
+  overlay.className='red';
+  fbTitle.textContent=product['Tags']||product.tags||''; fbTitle.style.display='block';
+  const txt=getGradingText(product['Grading']||product['Grading Tekst']||'');
+  if(txt){fbSub.textContent=txt;fbSub.style.display='block';fbSub.style.direction=activeLang==='ar'?'rtl':'ltr';}
+  else fbSub.style.display='none';
+  greenMsg.style.display='none';
+  bcDisp.textContent=barcode; bcDisp.style.display='block';
+  scanHintEl.style.display='none';
+  sound.currentTime=0; sound.play().catch(()=>{});
+}
+function showIdle(){
+  overlay.className='';
+  greenMsg.style.display='none'; fbTitle.style.display='none';
+  fbSub.style.display='none'; bcDisp.style.display='none';
+  scanHintEl.style.display='block';
+}
+
+// ── Grade panel ───────────────────────────────────────────────────────
+function showGradePanel(){
+  gradePanel.style.display='flex';
+  subPanel.style.display='none';
+  custWrap.style.display='none';
+}
+function hideGradePanel(){gradePanel.style.display='none';}
+
+document.querySelectorAll('.g-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>handleGrade(btn.dataset.g));
+});
+
+function handleGrade(g){
+  if(g==='D-rep'||g==='D-def'){
+    pendingGrade=g;
+    hideGradePanel();
+    showSubPanel(g);
+  } else {
+    commitScan(g, gradeWords[g], '', '');
+  }
+}
+
+// ── Sub panel ─────────────────────────────────────────────────────────
+function showSubPanel(g){
+  subPanel.style.display='flex';
+  custWrap.style.display='none';
+  if(g==='D-rep'){
+    subQ.textContent=t('repQ');
+    document.getElementById('sub-al-lbl').textContent=t('repGiven');
+    document.getElementById('sub-cu-lbl').textContent=t('repCustom');
+  } else {
+    subQ.textContent=t('defQ');
+    document.getElementById('sub-al-lbl').textContent=t('defGiven');
+    document.getElementById('sub-cu-lbl').textContent=t('defCustom');
+  }
+}
+
+subAlready.addEventListener('click',()=>{
+  const g=pendingGrade;
+  commitScan(g, gradeWords[g], 'already given', '');
+});
+
+subCustom.addEventListener('click',()=>{
+  custWrap.style.display='flex';
+  custInp.value=''; custInp.focus();
+});
+
+custConfirm.addEventListener('click',()=>{
+  const reason=custInp.value.trim();
+  if(!reason) return;
+  commitScan(pendingGrade, gradeWords[pendingGrade], reason, '');
+});
+custInp.addEventListener('keydown',e=>{if(e.key==='Enter') custConfirm.click();});
+
+// ── Commit scan ───────────────────────────────────────────────────────
+async function commitScan(statusCode, statusWord, extraInfo, _unused){
+  if(!pendingScan) return;
+
+  const g = pendingGrade;
+  const infoRep = (g==='D-rep') ? extraInfo : '';
+  const infoDef = (g==='D-def') ? extraInfo : '';
+
+  const row = {
+    sessionId,
+    userName,
+    userInit,
+    supplier,
+    barcode: pendingScan.barcode,
+    type: pendingScan.isGrading ? 'Grading' : 'Normal',
+    Status_product_code: statusCode,
+    Status_product_word: statusWord,
+    Info_reparatie: infoRep,
+    Info_defect: infoDef,
+    date: nowDate(),
+    time: nowTime()
+  };
+
+  // increment counter NOW (grading is complete)
+  updateCounter(true);
+
+  // reset state
+  pendingScan=null; pendingGrade=null;
+  subPanel.style.display='none';
+  hideGradePanel();
+  custWrap.style.display='none';
+  showIdle();
+  focusInput();
+
+  // send to Sheets (with offline fallback)
+  const ok = await sendToSheets(row);
+  if(!ok){
+    offlineQueue.push(row);
+    localStorage.setItem('offlineQueue',JSON.stringify(offlineQueue));
+    updateQueueBadge();
+  } else {
+    // try to flush any previously queued items
+    flushOfflineQueue();
+  }
+}
+
+// ── Scan handler ──────────────────────────────────────────────────────
+function handleScan(barcode){
+  const code=barcode.trim();
+  if(!code) return;
+  if(gradePanel.style.display==='flex'||subPanel.style.display==='flex') return;
+
+  const splitMatch = (val) => val ? val.split(',').map(s=>s.trim()).filter(s=>s.length>3).includes(code) : false;
+  const found=productData.find(p=>
+    splitMatch(p['Barcode']) ||
+    splitMatch(p['Productcode']) ||
+    splitMatch(p['Artikelcode']) ||
+    splitMatch(p['Productcode leverancier'])
+  );
+
+  pendingScan={barcode:code, isGrading:!!(found&&(found['Tags']||found.tags||'').toLowerCase().includes('grading')), product:found||null};
+  pendingGrade=null;
+
+  found ? showRed(found,code) : showGreen();
+  showGradePanel();
+  bInput.value='';
+}
+
+bInput.addEventListener('keydown',e=>{if(e.key==='Enter') handleScan(bInput.value);});
+bInput.addEventListener('change',()=>{if(bInput.value.trim()) handleScan(bInput.value);});
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────
+document.addEventListener('keydown',e=>{
+  const anyModal=['m-lang','m-name','m-init','m-sup'].some(id=>document.getElementById(id).style.display!=='none');
+  if(anyModal) return;
+
+  // Escape key = cancel/back in all panels
+  if(e.key==='Escape'){
+    e.preventDefault();
+    if(subPanel.style.display==='flex'){
+      // go back to grade panel
+      subPanel.style.display='none';
+      custWrap.style.display='none';
+      pendingGrade=null;
+      showGradePanel();
+    } else if(gradePanel.style.display==='flex'){
+      cancelScan();
+    }
+    return;
+  }
+
+  if(custWrap.style.display==='flex') return;
+
+  if(gradePanel.style.display==='flex'){
+    const map={'1':'A','2':'B','3':'C','4':'D-rep','5':'D-def'};
+    if(map[e.key]){e.preventDefault();handleGrade(map[e.key]);}
+    return;
+  }
+  if(subPanel.style.display==='flex'){
+    if(e.key==='1'){e.preventDefault();subAlready.click();}
+    if(e.key==='2'){e.preventDefault();subCustom.click();}
+    return;
+  }
+  if(document.activeElement!==bInput) bInput.focus();
+});
+
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.modal-box')&&!e.target.closest('.ctrl-btn')&&!e.target.closest('#grade-panel')&&!e.target.closest('#sub-panel')) focusInput();
+});
+
+// ── Reset ─────────────────────────────────────────────────────────────
+function doReset(){
+  sessionId=genId(); totalScans=0;
+  userName=''; userInit=''; supplier='';
+  offlineQueue=[];
+  ['sessionId','totalScans','offlineQueue','userName','userInit','supplier','activeLang'].forEach(k=>localStorage.removeItem(k));
+  localStorage.setItem('sessionId',sessionId);
+  localStorage.setItem('totalScans','0');
+  localStorage.setItem('offlineQueue','[]');
+  activeLang='';
+  langInd.textContent='NL';
+  scanCtr.textContent='Scans: 0';
+  queueBadge.style.display='none';
+  pendingScan=null; pendingGrade=null;
+  hideGradePanel(); subPanel.style.display='none'; custWrap.style.display='none';
+  supplierBar.style.display='none';
+  showIdle();
+  startFlow();
+}
+
+document.getElementById('reset-btn').addEventListener('click',()=>{
+  if(!confirm(t('resetConfirm'))) return;
+  doReset();
+});
+document.getElementById('close-btn').addEventListener('click',()=>{
+  if(!confirm(t('closeConfirm'))) return;
+  window.close();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────
+updateQueueBadge();
+scanCtr.textContent=`Scans: ${totalScans}`;
+if(activeLang) applyLang();
+startFlow();
+
+// Retry offline queue every 30s
+setInterval(flushOfflineQueue, 30000);
+</script>
+</body>
+</html>
